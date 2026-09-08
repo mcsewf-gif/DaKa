@@ -17,12 +17,20 @@
     .nav button { flex: 1; padding: 8px; border: none; background: transparent; font-weight: bold; color: #6b7280; border-radius: 6px; cursor: pointer; }
     .nav button.active { background: var(--primary); color: white; }
     .container { padding: 0 12px; }
-    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+    
+    /* 卡片与拖拽样式 */
+    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; cursor: grab; user-select: none; -webkit-user-select: none; transition: transform 0.15s ease, box-shadow 0.15s ease; touch-action: none; }
+    .card:active { cursor: grabbing; }
+    .card.dragging { opacity: 0.4; transform: scale(0.98); border: 2px dashed var(--primary); }
+    .drag-handle { color: #9ca3af; margin-right: 12px; font-size: 18px; cursor: grab; display: flex; align-items: center; }
+    .task-main { display: flex; align-items: center; flex: 1; }
+    
     .task-info h3 { font-size: 16px; margin-bottom: 4px; }
     .status { font-size: 12px; color: #6b7280; }
     .status.warning { color: #dc2626; font-weight: bold; }
     .btn-check { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; }
     .btn-check:active { opacity: 0.8; }
+    
     /* 视图样式 */
     .calendar-grid { background: white; border-radius: 12px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .grid-header, .grid-row { display: grid; grid-template-columns: 80px repeat(7, 1fr); gap: 4px; text-align: center; font-size: 12px; align-items: center; }
@@ -81,12 +89,12 @@
   </div>
 
   <script>
-    const DEFAULT_TASKS = ['擦地', '前院剪草', '后院剪草', '洗衣服', '刷洗手间' ];
+    const DEFAULT_TASKS = ['擦地', '刷洗手间', '洗衣服', '后院剪草', '前院剪草', '浇花'];
     
     // 初始化数据结构
     let store = JSON.parse(localStorage.getItem('housework_data')) || {
       tasks: DEFAULT_TASKS,
-      logs: {} // 格式: { '2026-09-08': ['擦地', '浇花'] }
+      logs: {}
     };
 
     function saveData() {
@@ -110,7 +118,6 @@
       if (view === 'month') renderMonth();
     }
 
-    // 计算某项家务上次完成距今几天
     function getLastDoneDays(task) {
       const dates = Object.keys(store.logs).filter(d => store.logs[d].includes(task)).sort().reverse();
       if (dates.length === 0) return null;
@@ -118,7 +125,6 @@
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
-    // 切换打卡状态
     function toggleCheck(task) {
       const today = getTodayStr();
       if (!store.logs[today]) store.logs[today] = [];
@@ -133,13 +139,13 @@
       renderToday();
     }
 
-    // 渲染今日视图
+    // 渲染今日视图 (包含拖拽逻辑绑定)
     function renderToday() {
       const container = document.getElementById('today-list');
       const today = getTodayStr();
       const todayLogs = store.logs[today] || [];
 
-      container.innerHTML = store.tasks.map(task => {
+      container.innerHTML = store.tasks.map((task, index) => {
         const isDoneToday = todayLogs.includes(task);
         const daysAgo = getLastDoneDays(task);
         
@@ -150,14 +156,17 @@
           statusText = '今日已完成';
         } else if (daysAgo !== null) {
           statusText = `距上次已过 ${daysAgo} 天`;
-          if (daysAgo >= 10) isWarning = true; // 超过10天未做显示警告色
+          if (daysAgo >= 10) isWarning = true;
         }
 
         return `
-          <div class="card">
-            <div class="task-info">
-              <h3>${task}</h3>
-              <div class="status ${isWarning ? 'warning' : ''}">${statusText}</div>
+          <div class="card" draggable="true" data-index="${index}">
+            <div class="task-main">
+              <span class="drag-handle">☰</span>
+              <div class="task-info">
+                <h3>${task}</h3>
+                <div class="status ${isWarning ? 'warning' : ''}">${statusText}</div>
+              </div>
             </div>
             <button class="btn-check" style="${isDoneToday ? 'background:#10b981' : ''}" onclick="toggleCheck('${task}')">
               ${isDoneToday ? '已完成 ✓' : '打卡'}
@@ -165,13 +174,97 @@
           </div>
         `;
       }).join('');
+
+      initDragAndDrop();
     }
 
-    // 渲染周视图
+    // 绑定 PC 拖拽与手机 Touch 触摸拖拽逻辑
+    function initDragAndDrop() {
+      const container = document.getElementById('today-list');
+      const cards = container.querySelectorAll('.card');
+      let draggedCard = null;
+
+      cards.forEach(card => {
+        // --- PC 端 Drag & Drop ---
+        card.addEventListener('dragstart', (e) => {
+          draggedCard = card;
+          setTimeout(() => card.classList.add('dragging'), 0);
+        });
+
+        card.addEventListener('dragend', () => {
+          card.classList.remove('dragging');
+          updateTaskOrder();
+        });
+
+        // --- 移动端 Touch 事件模拟 ---
+        card.addEventListener('touchstart', (e) => {
+          if (e.target.tagName === 'BUTTON') return; // 点击打卡按钮时不触发拖拽
+          draggedCard = card;
+          card.classList.add('dragging');
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (e) => {
+          if (!draggedCard) return;
+          const touch = e.touches[0];
+          const target = document.elementFromPoint(touch.clientX, touch.clientY);
+          const targetCard = target ? target.closest('.card') : null;
+
+          if (targetCard && targetCard !== draggedCard) {
+            const rect = targetCard.getBoundingClientRect();
+            const next = (touch.clientY - rect.top) > (rect.height / 2);
+            container.insertBefore(draggedCard, next ? targetCard.nextSibling : targetCard);
+          }
+        }, { passive: true });
+
+        card.addEventListener('touchend', () => {
+          if (draggedCard) {
+            draggedCard.classList.remove('dragging');
+            draggedCard = null;
+            updateTaskOrder();
+          }
+        });
+      });
+
+      // PC 端 dragover 处理
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(container, e.clientY);
+        if (afterElement == null) {
+          container.appendChild(draggedCard);
+        } else {
+          container.insertBefore(draggedCard, afterElement);
+        }
+      });
+    }
+
+    // 计算鼠标落在哪个元素上方
+    function getDragAfterElement(container, y) {
+      const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+      return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+          return { offset: offset, element: child };
+        } else {
+          return closest;
+        }
+      }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    // 更新 store.tasks 中的顺序并保存
+    function updateTaskOrder() {
+      const container = document.getElementById('today-list');
+      const cardTitles = container.querySelectorAll('.task-info h3');
+      const newOrder = Array.from(cardTitles).map(h3 => h3.innerText);
+      
+      store.tasks = newOrder;
+      saveData();
+    }
+
     function renderWeek() {
       const container = document.getElementById('week-rows');
       const curr = new Date();
-      const firstDay = curr.getDate() - curr.getDay() + 1; // 本周一
+      const firstDay = curr.getDate() - curr.getDay() + 1;
       
       const weekDates = [];
       for (let i = 0; i < 7; i++) {
@@ -194,7 +287,6 @@
       }).join('');
     }
 
-    // 渲染月视图
     function renderMonth() {
       const container = document.getElementById('month-days');
       const now = new Date();
@@ -205,7 +297,6 @@
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       
       let html = '';
-      // 填充当月首日前的空白
       for (let i = 0; i < (firstDay === 0 ? 6 : firstDay - 1); i++) {
         html += `<div class="month-day" style="background:#f3f4f6;"></div>`;
       }
@@ -225,7 +316,6 @@
       container.innerHTML = html;
     }
 
-    // 添加新家务
     function addTask() {
       const input = document.getElementById('new-task-input');
       const val = input.value.trim();
@@ -237,7 +327,6 @@
       }
     }
 
-    // 注册 Service Worker 实现 PWA
     if ('serviceWorker' in navigator) {
       const swCode = `
         self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
@@ -247,8 +336,8 @@
       navigator.serviceWorker.register(URL.createObjectURL(blob));
     }
 
-    // 默认加载今日视图
     renderToday();
   </script>
 </body>
 </html>
+
