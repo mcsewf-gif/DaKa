@@ -51,8 +51,10 @@
     .task-main { display: flex; align-items: center; flex: 1; overflow: hidden; margin-right: 6px; }
     
     .task-info { flex: 1; min-width: 0; }
-    .task-title-wrap { display: flex; align-items: center; gap: 4px; overflow: hidden; }
     .task-info h3 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    /* 第二行包含备注与状态警告 */
+    .sub-info { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
     
     /* 备注标签样式 */
     .task-note-badge { 
@@ -63,11 +65,10 @@
       border-radius: 4px; 
       font-weight: normal; 
       white-space: nowrap;
-      flex-shrink: 0;
+      display: inline-block;
     }
 
-    .status { font-size: 11px; color: #6b7280; margin-top: 2px; }
-    .status.warning { color: #dc2626; font-weight: bold; }
+    .status.warning { font-size: 11px; color: #dc2626; font-weight: bold; }
     
     /* 操作按钮组 */
     .actions { display: flex; align-items: center; gap: 3px; }
@@ -136,10 +137,10 @@
   <script>
     const DEFAULT_TASKS = ['擦地', '刷洗手间', '洗衣服', '后院剪草', '前院剪草', '浇花'];
     
-    // 初始化数据结构 (增加 notes 字段)
+    // 初始化数据结构
     let store = JSON.parse(localStorage.getItem('housework_data')) || {
       tasks: DEFAULT_TASKS,
-      notes: {}, // 格式: { '前院剪草': '高档' }
+      notes: {},
       logs: {}
     };
 
@@ -193,7 +194,7 @@
       let newNote = prompt(`为“${taskName}”设置备注（最多3个字，留空清除）：`, currentNote);
       
       if (newNote !== null) {
-        newNote = newNote.trim().substring(0, 3); // 强制截取前3字
+        newNote = newNote.trim().substring(0, 3);
         if (newNote) {
           store.notes[taskName] = newNote;
         } else {
@@ -218,7 +219,6 @@
           store.tasks[index] = cleanName;
         }
 
-        // 同步迁移备注
         if (store.notes[oldName]) {
           store.notes[cleanName] = store.notes[oldName];
           delete store.notes[oldName];
@@ -253,14 +253,9 @@
         const daysAgo = getLastDoneDays(task);
         const note = store.notes[task];
         
-        let statusText = '从未打卡';
-        let isWarning = false;
-
-        if (isDoneToday) {
-          statusText = '今日已完成';
-        } else if (daysAgo !== null) {
-          statusText = `距上次已过 ${daysAgo} 天`;
-          if (daysAgo >= 10) isWarning = true;
+        let warningText = '';
+        if (!isDoneToday && daysAgo !== null && daysAgo >= 10) {
+          warningText = `距上次已过 ${daysAgo} 天`;
         }
 
         return `
@@ -268,11 +263,13 @@
             <div class="task-main">
               <span class="drag-handle">☰</span>
               <div class="task-info">
-                <div class="task-title-wrap">
-                  <h3>${task}</h3>
-                  ${note ? `<span class="task-note-badge">${note}</span>` : ''}
-                </div>
-                <div class="status ${isWarning ? 'warning' : ''}">${statusText}</div>
+                <h3>${task}</h3>
+                ${(note || warningText) ? `
+                  <div class="sub-info">
+                    ${note ? `<span class="task-note-badge">${note}</span>` : ''}
+                    ${warningText ? `<span class="status warning">${warningText}</span>` : ''}
+                  </div>
+                ` : ''}
               </div>
             </div>
             <div class="actions">
