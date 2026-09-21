@@ -85,10 +85,41 @@
     .task-name { text-align: left; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dot { width: 12px; height: 12px; border-radius: 50%; margin: 0 auto; background: #e5e7eb; }
     .dot.done { background: #10b981; }
-    .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-    .month-day { padding: 6px 2px; font-size: 11px; border: 1px solid #eee; border-radius: 4px; min-height: 44px; background: #fafafa; }
+
+    /* 月视图等宽布局调整 */
+    .month-grid { 
+      display: grid; 
+      grid-template-columns: repeat(7, 1fr); 
+      gap: 4px; 
+      text-align: center; 
+    }
+    .month-day { 
+      padding: 6px 2px; 
+      font-size: 11px; 
+      border: 1px solid #eee; 
+      border-radius: 4px; 
+      min-height: 48px; 
+      background: #fafafa; 
+      min-width: 0; /* 允许子元素缩小，防止内容撑宽网格 */
+      overflow: hidden;
+    }
+    .month-day.empty { 
+      background: #f3f4f6; 
+      border-color: transparent; 
+    }
     .month-day .num { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
-    .month-tag { background: #10b981; color: white; font-size: 9px; padding: 1px 2px; border-radius: 2px; margin-top: 1px; overflow: hidden; white-space: nowrap; }
+    .month-tag { 
+      background: #10b981; 
+      color: white; 
+      font-size: 9px; 
+      padding: 1px 2px; 
+      border-radius: 2px; 
+      margin-top: 1px; 
+      overflow: hidden; 
+      white-space: nowrap; 
+      text-overflow: ellipsis; /* 文本超长时自动省略，保持单格等宽 */
+    }
+
     .add-bar { display: flex; gap: 8px; margin-bottom: 8px; }
     .add-bar input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-size: 13px; }
     .add-bar button { background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; }
@@ -400,6 +431,7 @@
       }).join('');
     }
 
+    // 修改：让月视图每个日期的单元格严格按比例等宽
     function renderMonth() {
       const container = document.getElementById('month-days');
       const now = new Date();
@@ -410,16 +442,21 @@
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       
       let html = '';
-      for (let i = 0; i < (firstDay === 0 ? 6 : firstDay - 1); i++) {
-        html += `<div class="month-day" style="background:#f3f4f6;"></div>`;
+      
+      // 1. 生成前面的空白天数格（每一个都是单独的格，确保网格对齐）
+      const emptyCount = (firstDay === 0 ? 6 : firstDay - 1);
+      for (let i = 0; i < emptyCount; i++) {
+        html += `<div class="month-day empty"></div>`;
       }
 
+      // 2. 渲染真实的日期格
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const logs = store.logs[dateStr] || [];
         const tags = logs.map(t => {
           const note = store.notes[t];
-          return `<div class="month-tag">${note ? `${t}(${note})` : t}</div>`;
+          const text = note ? `${t}(${note})` : t;
+          return `<div class="month-tag" title="${text}">${text}</div>`;
         }).join('');
 
         html += `
@@ -456,4 +493,3 @@
   </script>
 </body>
 </html>
-
