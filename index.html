@@ -100,7 +100,7 @@
       border-radius: 4px; 
       min-height: 48px; 
       background: #fafafa; 
-      min-width: 0; /* 允许子元素缩小，防止内容撑宽网格 */
+      min-width: 0;
       overflow: hidden;
     }
     .month-day.empty { 
@@ -112,17 +112,81 @@
       background: #10b981; 
       color: white; 
       font-size: 9px; 
-      padding: 1px 2px; 
+      padding: 2px 2px; 
       border-radius: 2px; 
-      margin-top: 1px; 
+      margin-top: 2px; 
       overflow: hidden; 
       white-space: nowrap; 
-      text-overflow: ellipsis; /* 文本超长时自动省略，保持单格等宽 */
+      text-overflow: ellipsis; 
+      cursor: pointer;
+    }
+    .month-tag:active {
+      opacity: 0.7;
     }
 
     .add-bar { display: flex; gap: 8px; margin-bottom: 8px; }
     .add-bar input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-size: 13px; }
     .add-bar button { background: #10b981; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; }
+
+    /* 详情弹窗样式 */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      width: 100%;
+      max-width: 300px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--text);
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+    .modal-field {
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: #4b5563;
+    }
+    .modal-field label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+    .modal-field input[type="date"] {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .btn-modal {
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn-modal-cancel { background: #e5e7eb; color: #374151; }
+    .btn-modal-delete { background: #fee2e2; color: #dc2626; }
+    .btn-modal-save { background: var(--primary); color: white; }
   </style>
 </head>
 <body>
@@ -165,6 +229,22 @@
     </div>
   </div>
 
+  <!-- 打卡记录详情弹窗 -->
+  <div id="item-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-title" id="modal-item-title">家务名称</div>
+      <div class="modal-field">
+        <label for="modal-date-input">打卡日期：</label>
+        <input type="date" id="modal-date-input">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-modal btn-modal-delete" onclick="deleteModalItem()">删除记录</button>
+        <button class="btn-modal btn-modal-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-modal btn-modal-save" onclick="saveModalItem()">保存修改</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_TASKS = ['擦地', '刷洗手间', '洗衣服', '后院剪草', '前院剪草', '浇花'];
     
@@ -176,6 +256,8 @@
     };
 
     if (!store.notes) store.notes = {};
+
+    let currentEditingItem = null; // 暂存正在编辑的月视图条目信息 { task, date }
 
     function saveData() {
       localStorage.setItem('housework_data', JSON.stringify(store));
@@ -431,7 +513,7 @@
       }).join('');
     }
 
-    // 修改：让月视图每个日期的单元格严格按比例等宽
+    // 渲染月视图
     function renderMonth() {
       const container = document.getElementById('month-days');
       const now = new Date();
@@ -443,20 +525,18 @@
       
       let html = '';
       
-      // 1. 生成前面的空白天数格（每一个都是单独的格，确保网格对齐）
       const emptyCount = (firstDay === 0 ? 6 : firstDay - 1);
       for (let i = 0; i < emptyCount; i++) {
         html += `<div class="month-day empty"></div>`;
       }
 
-      // 2. 渲染真实的日期格
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const logs = store.logs[dateStr] || [];
         const tags = logs.map(t => {
           const note = store.notes[t];
           const text = note ? `${t}(${note})` : t;
-          return `<div class="month-tag" title="${text}">${text}</div>`;
+          return `<div class="month-tag" onclick="openModal('${t}', '${dateStr}')">${text}</div>`;
         }).join('');
 
         html += `
@@ -467,6 +547,61 @@
         `;
       }
       container.innerHTML = html;
+    }
+
+    // 弹窗相关逻辑
+    function openModal(task, dateStr) {
+      currentEditingItem = { task, date: dateStr };
+      const note = store.notes[task];
+      const fullText = note ? `${task} (${note})` : task;
+      
+      document.getElementById('modal-item-title').innerText = fullText;
+      document.getElementById('modal-date-input').value = dateStr;
+      document.getElementById('item-modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('item-modal').style.display = 'none';
+      currentEditingItem = null;
+    }
+
+    function deleteModalItem() {
+      if (!currentEditingItem) return;
+      const { task, date } = currentEditingItem;
+      if (store.logs[date]) {
+        store.logs[date] = store.logs[date].filter(t => t !== task);
+        saveData();
+        renderMonth();
+      }
+      closeModal();
+    }
+
+    function saveModalItem() {
+      if (!currentEditingItem) return;
+      const { task, date: oldDate } = currentEditingItem;
+      const newDate = document.getElementById('modal-date-input').value;
+
+      if (!newDate) {
+        alert('请选择有效日期');
+        return;
+      }
+
+      if (newDate !== oldDate) {
+        // 从旧日期中移除
+        if (store.logs[oldDate]) {
+          store.logs[oldDate] = store.logs[oldDate].filter(t => t !== task);
+        }
+        // 添加到新日期
+        if (!store.logs[newDate]) {
+          store.logs[newDate] = [];
+        }
+        if (!store.logs[newDate].includes(task)) {
+          store.logs[newDate].push(task);
+        }
+        saveData();
+        renderMonth();
+      }
+      closeModal();
     }
 
     function addTask() {
