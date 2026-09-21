@@ -112,6 +112,20 @@
       background: #d1d5db;
     }
 
+    /* 月视图星期表头 */
+    .month-week-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 12px;
+      color: #4b5563;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #eee;
+      margin-bottom: 6px;
+    }
+
     /* 月视图等宽布局调整 */
     .month-grid { 
       display: grid; 
@@ -259,6 +273,12 @@
             <button onclick="changeMonth(1)">下月 ▶</button>
           </div>
         </div>
+
+        <!-- 星期标注表头 -->
+        <div class="month-week-header">
+          <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
+        </div>
+
         <div class="month-grid" id="month-days"></div>
       </div>
     </div>
@@ -555,7 +575,6 @@
       const year = viewDate.getFullYear();
       const month = viewDate.getMonth();
       
-      // 更新标题（如：2026年9月）
       document.getElementById('month-title').innerText = `${year}年${month + 1}月`;
 
       const firstDay = new Date(year, month, 1).getDay();
@@ -636,11 +655,9 @@
       }
 
       if (newDate !== oldDate) {
-        // 从旧日期中移除
         if (store.logs[oldDate]) {
           store.logs[oldDate] = store.logs[oldDate].filter(t => t !== task);
         }
-        // 添加到新日期
         if (!store.logs[newDate]) {
           store.logs[newDate] = [];
         }
