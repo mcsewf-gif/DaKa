@@ -86,6 +86,26 @@
     .dot { width: 12px; height: 12px; border-radius: 50%; margin: 0 auto; background: #e5e7eb; }
     .dot.done { background: #10b981; }
 
+    /* 月视图搜索栏 */
+    .month-search-bar {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 6px;
+    }
+    .month-search-bar input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      outline: none;
+      font-size: 13px;
+      background: #f9fafb;
+    }
+    .month-search-bar input:focus {
+      border-color: var(--primary);
+      background: #fff;
+    }
+
     /* 月份选择器 */
     .month-header {
       display: flex;
@@ -142,10 +162,15 @@
       background: #fafafa; 
       min-width: 0;
       overflow: hidden;
+      transition: opacity 0.2s;
+    }
+    .month-day.dimmed {
+      opacity: 0.35;
     }
     .month-day.empty { 
       background: #f3f4f6; 
       border-color: transparent; 
+      opacity: 1 !important;
     }
     .month-day .num { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
     .month-tag { 
@@ -159,9 +184,16 @@
       white-space: nowrap; 
       text-overflow: ellipsis; 
       cursor: pointer;
+      transition: all 0.2s;
     }
     .month-tag:active {
       opacity: 0.7;
+    }
+    .month-tag.dimmed {
+      background: #d1d5db;
+      color: transparent;
+      opacity: 0.3;
+      height: 14px;
     }
 
     .add-bar { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -264,6 +296,11 @@
     <!-- 月视图 -->
     <div id="view-month" style="display: none;">
       <div class="calendar-grid">
+        <!-- 搜索功能栏 -->
+        <div class="month-search-bar">
+          <input type="text" id="month-search-input" placeholder="🔍 搜索月视图记录 (例: 剪草/扫地)..." oninput="renderMonth()">
+        </div>
+
         <!-- 切换月份导航 -->
         <div class="month-header">
           <button onclick="changeMonth(-1)">◀ 上月</button>
@@ -571,20 +608,21 @@
       }).join('');
     }
 
-    // 渲染月视图（以周日为起点）
+    // 渲染月视图（带搜索过滤功能）
     function renderMonth() {
       const container = document.getElementById('month-days');
       const year = viewDate.getFullYear();
       const month = viewDate.getMonth();
+      const searchKey = (document.getElementById('month-search-input')?.value || '').trim().toLowerCase();
       
       document.getElementById('month-title').innerText = `${year}年${month + 1}月`;
 
-      const firstDay = new Date(year, month, 1).getDay(); // 0 表示周日，正好对应前面填补的空格数
+      const firstDay = new Date(year, month, 1).getDay(); // 0 表示周日
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       
       let html = '';
       
-      // 周日为首列时，1号的 getDay() 即为需要填充的空白格数量
+      // 填充前面的空白格
       for (let i = 0; i < firstDay; i++) {
         html += `<div class="month-day empty"></div>`;
       }
@@ -592,14 +630,25 @@
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const logs = store.logs[dateStr] || [];
+        
+        let dayHasMatch = false;
+        
         const tags = logs.map(t => {
-          const note = store.notes[t];
-          const text = note ? `${t}(${note})` : t;
-          return `<div class="month-tag" onclick="openModal('${t}', '${dateStr}')">${text}</div>`;
+          const note = store.notes[t] || '';
+          const fullText = note ? `${t}(${note})` : t;
+          
+          // 判断当前标签是否符合搜索条件（匹配家务原名或者备注）
+          const matches = !searchKey || t.toLowerCase().includes(searchKey) || note.toLowerCase().includes(searchKey);
+          
+          if (matches) dayHasMatch = true;
+
+          return `<div class="month-tag ${matches ? '' : 'dimmed'}" onclick="openModal('${t}','${dateStr}')">${fullText}</div>`;
         }).join('');
 
+        const isDimmedDay = searchKey && !dayHasMatch;
+
         html += `
-          <div class="month-day">
+          <div class="month-day ${isDimmedDay ? 'dimmed' : ''}">
             <div class="num">${day}</div>
             ${tags}
           </div>
@@ -623,7 +672,7 @@
     function openModal(task, dateStr) {
       currentEditingItem = { task, date: dateStr };
       const note = store.notes[task];
-      const fullText = note ? `${task} (${note})` : task;
+      const fullText = note ? `${task}(${note})` : task;
       
       document.getElementById('modal-item-title').innerText = fullText;
       document.getElementById('modal-date-input').value = dateStr;
@@ -696,3 +745,4 @@
   </script>
 </body>
 </html>
+
